@@ -12,6 +12,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { theme } from '../../src/theme';
+import { servicesApi } from '../../src/services/servicesApi';
 import { CustomMapView } from '../../src/components/CustomMapView';
 import { mockData } from '../../src/data/mockData';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -69,7 +70,7 @@ export default function ServiceRequestScreen() {
     setCurrentStep(2);
   };
 
-  const handleSubmitRequest = () => {
+  const handleSubmitRequest = async () => {
     if (!serviceRequest.serviceType) {
       Alert.alert('Error', 'Por favor selecciona un tipo de servicio');
       return;
@@ -80,27 +81,36 @@ export default function ServiceRequestScreen() {
       return;
     }
 
-    Alert.alert(
-      'Solicitud enviada',
-      'Tu solicitud ha sido enviada exitosamente. Un conductor se pondrá en contacto contigo pronto.',
-      [
-        {
-          text: 'Aceptar',
-          onPress: () => {
-            console.log('Solicitud enviada:', serviceRequest);
-            setServiceRequest({
-              serviceType: '',
-              description: '',
-              address: '',
-              urgent: false,
-              towTruckId: undefined,
-            });
-            setCurrentStep(1);
-            router.push('/(tabs)/activity');
-          }
-        }
-      ]
-    );
+    try {
+      const resp = await servicesApi.createServiceRequest({
+        serviceId: serviceRequest.serviceType,
+        notes: serviceRequest.description || undefined,
+      });
+
+      Alert.alert(
+        'Solicitud enviada',
+        `Tu solicitud fue creada. ETA: ${resp.estimatedArrival}`,
+        [
+          {
+            text: 'Aceptar',
+            onPress: () => {
+              setServiceRequest({
+                serviceType: '',
+                description: '',
+                address: '',
+                urgent: false,
+                towTruckId: undefined,
+              });
+              setCurrentStep(1);
+              router.push('/(tabs)/activity');
+            },
+          },
+        ]
+      );
+    } catch (e: any) {
+      console.warn('Fallo al crear solicitud', e?.message || e);
+      Alert.alert('Error', 'No se pudo crear la solicitud. Intenta nuevamente.');
+    }
   };
 
   const renderStep1 = () => (

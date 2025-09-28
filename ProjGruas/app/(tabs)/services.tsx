@@ -1,9 +1,11 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../../src/theme';
 import { Stack, router } from 'expo-router';
 import { mockData } from '../../src/data/mockData';
+import { servicesApi } from '../../src/services/servicesApi';
+import type { Service, PaymentMethod } from '../../src/types/models';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const serviceIcons: Record<string, keyof typeof Ionicons.glyphMap> = {
@@ -14,7 +16,36 @@ const serviceIcons: Record<string, keyof typeof Ionicons.glyphMap> = {
 };
 
 export default function ServicesScreen() {
-  const { services, paymentMethods } = mockData;
+  const [services, setServices] = useState<Service[]>([]);
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const [srv, pm] = await Promise.all([
+          servicesApi.getServices(),
+          servicesApi.getPaymentMethods(),
+        ]);
+        if (!mounted) return;
+        setServices(srv);
+        setPaymentMethods(pm);
+      } catch (e: any) {
+        console.warn('Fallo al cargar desde API, usando mockData', e?.message || e);
+        if (!mounted) return;
+        setError('No se pudo cargar desde el servidor. Mostrando datos de ejemplo.');
+        setServices(mockData.services as unknown as Service[]);
+        setPaymentMethods(mockData.paymentMethods as unknown as PaymentMethod[]);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const handleRequestService = (serviceId: string) => {
     const service = services.find(s => s.id === serviceId);
@@ -36,6 +67,15 @@ export default function ServicesScreen() {
     );
   };
 
+  if (loading) {
+    return (
+      <View style={[styles.container, { alignItems: 'center', justifyContent: 'center' }]}>
+        <ActivityIndicator size="large" color={theme.colors.primary} />
+        <Text style={{ marginTop: 12, color: theme.colors.textSecondary }}>Cargando servicios...</Text>
+      </View>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <Stack.Screen options={{ title: 'Servicios Disponibles' }} />
@@ -45,30 +85,12 @@ export default function ServicesScreen() {
           <View style={styles.titleRow}>
             <View>
               <Text style={styles.title}>Nuestros Servicios</Text>
-              <Text style={styles.subtitle}>Elige el servicio que necesitas</Text>
+              <Text style={styles.subtitle}>{error ? error : 'Elige el servicio que necesitas'}</Text>
             </View>
             <TouchableOpacity style={styles.historyButton} onPress={() => router.push('/(tabs)/activity')}>
               <Ionicons name="time-outline" size={18} color={theme.colors.primary} />
               <Text style={styles.historyButtonText}>Historial</Text>
             </TouchableOpacity>
-          </View>
-
-          <View style={styles.summaryRow}>
-            <View style={styles.summaryCard}>
-              <Ionicons name="car" size={22} color={theme.colors.primary} />
-              <Text style={styles.summaryValue}>{services.length}</Text>
-              <Text style={styles.summaryLabel}>Servicios</Text>
-            </View>
-            <View style={styles.summaryCard}>
-              <Ionicons name="card" size={22} color={theme.colors.secondary} />
-              <Text style={styles.summaryValue}>{paymentMethods.length}</Text>
-              <Text style={styles.summaryLabel}>Pagos</Text>
-            </View>
-            <View style={styles.summaryCard}>
-              <Ionicons name="shield-checkmark" size={22} color={theme.colors.success} />
-              <Text style={styles.summaryValue}>24/7</Text>
-              <Text style={styles.summaryLabel}>Cobertura</Text>
-            </View>
           </View>
         </View>
 
@@ -125,41 +147,6 @@ export default function ServicesScreen() {
             <Ionicons name="chevron-forward" size={20} color="white" />
           </TouchableOpacity>
         </View>
-
-        <View style={styles.paymentSection}>
-          <Text style={styles.paymentTitle}>Métodos de pago compatibles</Text>
-          {paymentMethods.map(method => (
-            <View key={method.id} style={styles.paymentCard}>
-              <View style={styles.paymentIconWrapper}>
-                <Ionicons
-                  name={method.type === 'card' ? 'card' : method.type === 'cash' ? 'wallet' : 'time-outline'}
-                  size={20}
-                  color={theme.colors.primary}
-                />
-              </View>
-              <View style={styles.paymentContent}>
-                <Text style={styles.paymentName}>{method.name}</Text>
-                <Text style={styles.paymentDescription}>{method.description}</Text>
-              </View>
-            </View>
-          ))}
-        </View>
-
-        <View style={styles.emergencySection}>
-          <TouchableOpacity
-            style={styles.emergencyCard}
-            onPress={() => Alert.alert('Llamando', 'Llamando al centro de emergencias...')}
-          >
-            <View style={styles.emergencyIcon}>
-              <Ionicons name="alert" size={24} color="white" />
-            </View>
-            <View style={styles.emergencyContent}>
-              <Text style={styles.emergencyTitle}>¿Emergencia?</Text>
-              <Text style={styles.emergencySubtitle}>Llama directamente a nuestro centro de atención 24/7</Text>
-            </View>
-            <Ionicons name="call" size={22} color="white" />
-          </TouchableOpacity>
-        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -183,7 +170,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   title: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: 'bold',
     color: theme.colors.text,
     marginBottom: 8,
@@ -205,33 +192,6 @@ const styles = StyleSheet.create({
     color: theme.colors.primary,
     fontWeight: '600',
   },
-  summaryRow: {
-    flexDirection: 'row',
-    marginTop: 20,
-    gap: 12,
-  },
-  summaryCard: {
-    flex: 1,
-    backgroundColor: theme.colors.surface,
-    borderRadius: 16,
-    paddingVertical: 16,
-    alignItems: 'center',
-    gap: 6,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  summaryValue: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: theme.colors.text,
-  },
-  summaryLabel: {
-    fontSize: 12,
-    color: theme.colors.textSecondary,
-  },
   servicesContainer: {
     paddingHorizontal: 20,
     paddingTop: 24,
@@ -240,8 +200,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     backgroundColor: theme.colors.surface,
     borderRadius: 18,
-    padding: 18,
-    marginBottom: 18,
+    padding: 16,
+    marginBottom: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06,
